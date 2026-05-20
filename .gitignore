@@ -1,0 +1,5 @@
+node_modules/
+honeypot.db
+*.log
+.env
+.DS_Store
