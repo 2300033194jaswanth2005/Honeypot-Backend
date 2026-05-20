@@ -1,0 +1,33 @@
+{
+  "attacks": [],
+  "attacker_profiles": [],
+  "dynamic_services": [
+    {
+      "id": 1779301234526,
+      "service_name": "ssh",
+      "port": 2222,
+      "protocol": "tcp",
+      "banner": "SSH-2.0-OpenSSH_7.4\r\n",
+      "active": true,
+      "created_at": "20/5/2026, 11:50:34 pm"
+    },
+    {
+      "id": 1779301234601,
+      "service_name": "mysql",
+      "port": 3307,
+      "protocol": "tcp",
+      "banner": "MySQL Server 5.7.33\r\n",
+      "active": true,
+      "created_at": "20/5/2026, 11:50:34 pm"
+    },
+    {
+      "id": 1779301234603,
+      "service_name": "ftp",
+      "port": 2121,
+      "protocol": "tcp",
+      "banner": "220 FTP Server Ready\r\n",
+      "active": true,
+      "created_at": "20/5/2026, 11:50:34 pm"
+    }
+  ]
+}

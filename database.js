@@ -1,84 +1,84 @@
-const sqlite3 = require('sqlite3').verbose();
-const { open } = require('sqlite');
+const low = require('lowdb');
+const FileSync = require('lowdb/adapters/FileSync');
 const path = require('path');
 
-let db;
+const dbPath = process.env.VERCEL ? '/tmp/honeypot.json' : path.join(__dirname, 'honeypot.json');
+const adapter = new FileSync(dbPath);
+const db = low(adapter);
 
-async function getDb() {
-    if (!db) {
-        db = await open({
-            filename: path.join(__dirname, 'honeypot.db'),
-            driver: sqlite3.Database
-        });
-        await db.run('PRAGMA journal_mode = WAL');
-    }
-    return db;
+function initDatabase() {
+    db.defaults({
+        attacks: [],
+        attacker_profiles: [],
+        dynamic_services: []
+    }).write();
+    console.log('Database initialized successfully');
 }
 
 const pool = {
-    query: async (sql, params = []) => {
-        const database = await getDb();
-        const trimmed = sql.trim().toUpperCase();
-        if (trimmed.startsWith('SELECT')) {
-            const rows = await database.all(sql, params);
-            return [rows];
+    query: (type, data) => {
+        switch (type) {
+            case 'getAttacks':
+                return db.get('attacks').orderBy('timestamp', 'desc').take(100).value();
+            case 'insertAttack':
+                db.get('attacks').push({
+                    id: Date.now(),
+                    ip: data.ip,
+                    port: data.port,
+                    service_type: data.service_type,
+                    timestamp: new Date().toLocaleString(),
+                    payload: data.payload,
+                    threat_level: data.threat_level || 'medium'
+                }).write();
+                return true;
+            case 'getProfiles':
+                return db.get('attacker_profiles').orderBy('threat_score', 'desc').value();
+            case 'getProfileByIp':
+                return db.get('attacker_profiles').find({ ip: data.ip }).value();
+            case 'insertProfile':
+                db.get('attacker_profiles').push(data).write();
+                return true;
+            case 'updateProfile':
+                db.get('attacker_profiles').find({ ip: data.ip }).assign(data).write();
+                return true;
+            case 'getServices':
+                return db.get('dynamic_services').filter({ active: true }).value();
+            case 'insertService':
+                if (!db.get('dynamic_services').find({ port: data.port }).value()) {
+                    db.get('dynamic_services').push({
+                        id: Date.now(),
+                        service_name: data.service_name,
+                        port: data.port,
+                        protocol: data.protocol || 'tcp',
+                        banner: data.banner,
+                        active: true,
+                        created_at: new Date().toLocaleString()
+                    }).write();
+                }
+                return true;
+            case 'countAttacks':
+                return db.get('attacks').size().value();
+            case 'countProfiles':
+                return db.get('attacker_profiles').size().value();
+            case 'countHighThreat':
+                return db.get('attacker_profiles').filter(p => p.threat_score >= 70).size().value();
+            case 'countServices':
+                return db.get('dynamic_services').filter({ active: true }).size().value();
+            case 'attacksByService':
+                const attacks = db.get('attacks').value();
+                const grouped = {};
+                attacks.forEach(a => {
+                    grouped[a.service_type] = (grouped[a.service_type] || 0) + 1;
+                });
+                return Object.entries(grouped).map(([service_type, count]) => ({ service_type, count }));
+            case 'getAllAttacks':
+                return db.get('attacks').orderBy('timestamp', 'desc').value();
+            case 'getAllProfiles':
+                return db.get('attacker_profiles').orderBy('threat_score', 'desc').value();
+            default:
+                return null;
         }
-        if (trimmed.startsWith('INSERT') || trimmed.startsWith('UPDATE') || trimmed.startsWith('DELETE')) {
-            const result = await database.run(sql, params);
-            return [result];
-        }
-        await database.exec(sql);
-        return [[]];
     }
 };
-
-async function initDatabase() {
-    const database = await getDb();
-    try {
-        await database.exec(`
-            CREATE TABLE IF NOT EXISTS attacks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ip TEXT,
-                port INTEGER,
-                service_type TEXT,
-                timestamp DATETIME DEFAULT (datetime('now','localtime')),
-                payload TEXT,
-                threat_level TEXT DEFAULT 'medium'
-            )
-        `);
-
-        await database.exec(`
-            CREATE TABLE IF NOT EXISTS attacker_profiles (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ip TEXT UNIQUE,
-                first_seen DATETIME DEFAULT (datetime('now','localtime')),
-                last_seen DATETIME DEFAULT (datetime('now','localtime')),
-                attack_count INTEGER DEFAULT 1,
-                tools_detected TEXT DEFAULT '[]',
-                ttps TEXT DEFAULT '[]',
-                threat_score INTEGER DEFAULT 0,
-                country TEXT,
-                profile_data TEXT DEFAULT '{}'
-            )
-        `);
-
-        await database.exec(`
-            CREATE TABLE IF NOT EXISTS dynamic_services (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                service_name TEXT,
-                port INTEGER UNIQUE,
-                protocol TEXT DEFAULT 'tcp',
-                banner TEXT,
-                active INTEGER DEFAULT 1,
-                created_at DATETIME DEFAULT (datetime('now','localtime'))
-            )
-        `);
-
-        console.log('Database initialized successfully');
-    } catch (error) {
-        console.error('Database init error:', error);
-        throw error;
-    }
-}
 
 module.exports = { pool, initDatabase };
